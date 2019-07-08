@@ -8,7 +8,7 @@ from utils import get_current_image_file_name
 from PIL import Image
 from edgetpu.detection.engine import DetectionEngine
 from imutils.video import VideoStream
-from render_detection_box import draw_obj_bounding_box
+from render_detection_box import draw_obj_bounding_box, draw_detection_zone
 
 #variables
 frame = None
@@ -40,9 +40,9 @@ def on_message(client, userdata, msg):
 		camera_name = msg.topic.split('/')[-1]						
 		frame = cv2.imdecode(np.fromstring(msg.payload, dtype='uint8'), -1)	
 		camera_settings = cameras[camera_name]			
-		if camera_settings['isDetectionEnabled'] is True: 
+		if camera_settings['isDetectionEnabled'] is True: 			
 			process_frame(frame, camera_settings)
-		cv2.imshow('Detection:{}'.format(camera_name), frame)	
+		#cv2.imshow('Detection:{}'.format(camera_name), frame)	
 
 def on_connect(client, userdata, flags, rc):
 	print("Connected with result code "+str(rc))
@@ -61,29 +61,26 @@ def process_frame_detection_event(camera_name):
 	if is_new_incident(time_since_last_frame_detection):  
 		print(camera_name)
 		print('person detected in frame. Send mqtt message!')	
-		client.publish('camera/detection/frame/{}'.format(camera_name), True)	
-		client.publish('cmnd/living-room-lamp-small/POWER', 'ON')	
-		client.publish('cmnd/living-room-lamp-tall/POWER', 'ON')									                        		
+		client.publish('camera/detection/frame/{}'.format(camera_name), json.dumps({"detection" : True}))			
 		set_last_frame_incident_time(current_time)
 
 def save_file(frame, camera_name):	
-	image_file_name = get_current_image_file_name(camera_name)
-	print(image_file_name)
+	image_file_name = get_current_image_file_name(camera_name)	
 	cv2.imwrite(image_file_name, frame) 
 
 def process_frame(frame, camera_settings):									          
 	inference_image = Image.fromarray(frame)           
 	detection_results = engine.DetectWithImage(inference_image, threshold=0.5, keep_aspect_ratio=True, relative_coord=False, top_k=5)	
-				
+	draw_detection_zone(frame, camera_settings)				
 	for obj in detection_results: 		
-		if(obj.label_id is not PERSON): continue							         
+		if(obj.label_id is not PERSON): continue								         
 		draw_obj_bounding_box(frame, obj)
 		process_frame_detection_event(camera_settings['name'])		
 		save_file(frame, camera_settings['name'])
 		break	
 
  #init  
-vs = VideoStream(usePiCamera=True, resolution=(320, 240)).start()
+#vs = VideoStream(usePiCamera=True, resolution=(320, 240)).start()
 time.sleep(1)    
 
 engine = DetectionEngine(model)
@@ -96,8 +93,8 @@ time.sleep(1)
 		 
 while True:
 	client.loop()	
-	if cv2.waitKey(1)&0xFF == ord('q'):
-		break
+	#if cv2.waitKey(1)&0xFF == ord('q'):
+	#	break
 		
-cv2.destroyAllWindows()
+#cv2.destroyAllWindows()
 time.sleep(2)
